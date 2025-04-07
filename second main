@@ -1,0 +1,113 @@
+import cv2
+import numpy as np
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from matplotlib import pyplot as plt
+import os
+import random
+import json
+
+
+def embed_secret_image():
+    width, height = 640, 480
+    fps = 30
+    duration = 60
+    total_frames = fps * duration
+
+    out_path = "stegavision_hidden_video.mp4"
+    metadata_path = "stegavision_metadata.json"
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+
+    saffron = (0, 140, 255)
+    white = (255, 255, 255)
+    green = (0, 255, 0)
+
+    stripe_h = height // 3
+    base_frame = np.zeros((height, width, 3), dtype=np.uint8)
+    base_frame[:stripe_h] = saffron
+    base_frame[stripe_h:2*stripe_h] = white
+    base_frame[2*stripe_h:] = green
+
+    secret = np.zeros((50, 50, 3), dtype=np.uint8)
+    secret[:] = (0, 0, 255)
+
+    embed_frame = random.randint(0, total_frames - 1)
+
+    for i in range(total_frames):
+        frame = base_frame.copy()
+        if i == embed_frame:
+            x, y = 100, 100
+            region = frame[y:y+50, x:x+50]
+            region &= 0b11111110
+            region |= (secret >> 7)
+            frame[y:y+50, x:x+50] = region
+        out.write(frame)
+
+    out.release()
+
+    metadata = {"frame_number": embed_frame, "x": 100, "y": 100, "w": 50, "h": 50}
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f)
+
+    messagebox.showinfo("Success", f"Hidden video saved as: {out_path}\nImage embedded in frame {embed_frame}")
+
+
+def show_image(img, title="Hidden Image"):
+    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
+
+
+def extract_hidden_image():
+    messagebox.showinfo("Select Video", "Please select the video file for analysis.")
+    path = filedialog.askopenfilename(filetypes=[("MP4 files", "*.mp4")])
+    if not path:
+        return
+
+    metadata_path = "stegavision_metadata.json"
+    if not os.path.exists(metadata_path):
+        messagebox.showerror("Error", "Metadata file not found! Cannot locate the hidden image.")
+        return
+
+    with open(metadata_path, "r") as f:
+        metadata = json.load(f)
+
+    frame_number = metadata.get("frame_number", 0)
+    x, y, w, h = metadata.get("x", 0), metadata.get("y", 0), metadata.get("w", 50), metadata.get("h", 50)
+
+    cap = cv2.VideoCapture(path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+    ret, frame = cap.read()
+
+    if not ret:
+        messagebox.showerror("Error", f"Could not read frame {frame_number} from video.")
+        return
+
+    hidden_raw = frame[y:y+h, x:x+w]
+    extracted = (hidden_raw & 1) << 7
+
+    show_image(extracted, title=f"Recovered Hidden Image - Frame {frame_number}")
+    messagebox.showinfo("Hidden Data Found", f"Frame: {frame_number}\nCoordinates: x={x}, y={y}, w={w}, h={h}")
+
+    cap.release()
+
+
+def main_gui():
+    root = tk.Tk()
+    root.title("StegaVision - Steganography Tool")
+    root.geometry("400x200")
+    root.resizable(False, False)
+
+    embed_btn = tk.Button(root, text="Embed Hidden Image", command=embed_secret_image, height=2, width=25)
+    embed_btn.pack(pady=20)
+
+    extract_btn = tk.Button(root, text="Extract Hidden Image", command=extract_hidden_image, height=2, width=25)
+    extract_btn.pack(pady=20)
+
+    root.mainloop()
+
+
+if __name__ == '__main__':
+    main_gui()
