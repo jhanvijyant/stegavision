@@ -1,0 +1,58 @@
+import cv2
+import numpy as np
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+from matplotlib import pyplot as plt
+
+def show_image(img, title="Hidden Image"):
+    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
+
+def extract_hidden_image():
+    print("📂 Select the video to scan...")
+    Tk().withdraw()
+    path = askopenfilename(filetypes=[("MP4 files", "*.mp4")])
+
+    if not path:
+        print("❌ No file selected.")
+        return
+
+    cap = cv2.VideoCapture(path)
+    frame_num = 0
+    found = False
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Try to detect LSB changes
+        hidden_data = (frame & 1) * 255
+        gray = cv2.cvtColor(hidden_data, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        nonzero = cv2.countNonZero(thresh)
+
+        if nonzero > 1000:
+            coords = cv2.findNonZero(thresh)
+            x, y, w, h = cv2.boundingRect(coords)
+
+            hidden_raw = frame[y:y+h, x:x+w]
+            extracted = (hidden_raw & 1) << 7  # Reconstruct
+
+            print(f"\n✅ Hidden image found in frame {frame_num}")
+            print(f"📍 Coordinates: x={x}, y={y}, w={w}, h={h}")
+            show_image(extracted, title=f"Recovered Hidden Image - Frame {frame_num}")
+            found = True
+            break
+
+        frame_num += 1
+
+    cap.release()
+    if not found:
+        print("❌ No hidden data found.")
+
+extract_hidden_image()
+
+
